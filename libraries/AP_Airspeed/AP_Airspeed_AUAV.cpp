@@ -71,13 +71,15 @@ void AP_Airspeed_AUAV::setup()
     dev->set_device_type(uint8_t(DevType::AUAV));
     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup devtype auav");
     set_bus_id(dev->get_bus_id());
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup got bus id");
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup got bus id 0x%02x", (unsigned)dev->get_bus_id());
     // Send Start-Average16 command to start measurement
     uint8_t command[] = {START_AVERAGE2_CMD};
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup created start command %u", command[0]);
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup created start command %u, size: %d", command[0], (int)sizeof(command));
     //GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: pretesting command %f", float(dev->transfer(command, 1, nullptr, 0));
     uint8_t ret_i2c = dev->transfer(command, 1, nullptr, 0);
     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup return by send i2c command %d", ret_i2c);
+
+
 
 // suggestion by copilot:
 // bool custom_i2c_write(uint8_t address, uint8_t data) {

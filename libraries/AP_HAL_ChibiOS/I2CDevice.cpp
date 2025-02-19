@@ -15,6 +15,7 @@
 
 #include <hal.h>
 #include "I2CDevice.h"
+#include <GCS_MAVLink/GCS.h>
 
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Math/AP_Math.h>
@@ -332,13 +333,13 @@ bool I2CDevice::transfer(const uint8_t *send, uint32_t send_len,
         bus.i2ccfg.op_mode = OPMODE_I2C;
     }
 #endif
-
     if (_split_transfers) {
         /*
           splitting the transfer() into two pieces avoids a stop condition
           with SCL low which is not supported on some devices (such as
           LidarLite blue label)
         */
+       GCS_SEND_TEXT(MAV_SEVERITY_INFO, "I2CDevice: 02");
         if (send && send_len) {
             if (!_transfer(send, send_len, nullptr, 0)) {
                 return false;
@@ -352,6 +353,7 @@ bool I2CDevice::transfer(const uint8_t *send, uint32_t send_len,
     } else {
         // combined transfer
         if (!_transfer(send, send_len, recv, recv_len)) {
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "I2CDevice: 30, addr 0x%02x, send_len: %d; recv_len: %d", _address , (int)send_len, (int)recv_len);
             return false;
         }
     }
@@ -359,9 +361,12 @@ bool I2CDevice::transfer(const uint8_t *send, uint32_t send_len,
     return true;
 }
 
+
 bool I2CDevice::_transfer(const uint8_t *send, uint32_t send_len,
                          uint8_t *recv, uint32_t recv_len)
 {
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "I2CDevice: 40, send_len: %d; recv_len: %d",  (int)send_len, (int)recv_len);
+    
     i2cAcquireBus(I2CD[bus.busnum].i2c);
 
     if (!bus.bouncebuffer_setup(send, send_len, recv, recv_len)) {
@@ -371,6 +376,13 @@ bool I2CDevice::_transfer(const uint8_t *send, uint32_t send_len,
 
     for(uint8_t i=0 ; i <= _retries; i++) {
         int ret;
+        int printdebug = 0;
+        // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "I2CDevice: 50, i: %d; retries: %d",  (int)i, (int)_retries);
+        if (_address == 0x38)
+        {
+            printdebug = 1;
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Detected address 0x38");
+        }
         // calculate a timeout as twice the expected transfer time, and set as min of 4ms
         uint32_t timeout_ms = 1+2*(((8*1000000UL/bus.busclock)*(send_len+recv_len))/1000);
         timeout_ms = MAX(timeout_ms, _timeout_ms);
@@ -388,10 +400,26 @@ bool I2CDevice::_transfer(const uint8_t *send, uint32_t send_len,
         osalSysUnlock();
 
         if(send_len == 0) {
+            if (printdebug == 1 )
+            {
+                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "I2CDevice: 60, bus.busnum: %d; _address: %d; recv: %d; recv_len: %d; timeout: %d",  (int)bus.busnum, (int)_address, (int)recv, (int)recv_len, (int)timeout_ms);
+            }
             ret = i2cMasterReceiveTimeout(I2CD[bus.busnum].i2c, _address, recv, recv_len, chTimeMS2I(timeout_ms));
+            if (printdebug == 1 ) 
+            {
+                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "I2CDevice: 61, ret: %d",  (int)ret);
+            }
         } else {
+            if (printdebug == 1 )
+            {
+                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "I2CDevice: 70, bus.busnum: %d; _address: %d; recv: %d; recv_len: %d; send: %d; send_len: %d;  timeout: %d",  (int)bus.busnum, (int)_address, (int)recv, (int)recv_len, (int)send, (int)send_len, (int)timeout_ms);
+            }
             ret = i2cMasterTransmitTimeout(I2CD[bus.busnum].i2c, _address, send, send_len,
                                            recv, recv_len, chTimeMS2I(timeout_ms));
+            if (printdebug == 1 )
+            {
+                GCS_SEND_TEXT(MAV_SEVERITY_INFO, "I2CDevice: 71, ret: %d",  (int)ret);
+            }
         }
 
         i2cSoftStop(I2CD[bus.busnum].i2c);
@@ -401,6 +429,7 @@ bool I2CDevice::_transfer(const uint8_t *send, uint32_t send_len,
 
         if (I2CD[bus.busnum].i2c->errors & I2C_ISR_LIMIT) {
             INTERNAL_ERROR(AP_InternalError::error_t::i2c_isr);
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "I2CDevice: 80");
             break;
         }
 
@@ -422,6 +451,7 @@ bool I2CDevice::_transfer(const uint8_t *send, uint32_t send_len,
     }
     bus.bouncebuffer_finish(send, recv, recv_len);
     i2cReleaseBus(I2CD[bus.busnum].i2c);
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "I2CDevice: 90");
     return false;
 }
 
