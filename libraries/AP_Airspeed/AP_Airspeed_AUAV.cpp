@@ -150,6 +150,7 @@ void AP_Airspeed_AUAV::read_coefficients()
 
     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficients i32A: %f, i32B: %f, i32C: %f, i32D: %f, D_TC50H: %f, D_TC50L: %f, D_Es: %f", 
                   DLIN_A, DLIN_B, DLIN_C, DLIN_D, (float)D_TC50H, (float)D_TC50L, (float)D_Es);
+    //todo: check why TC50L is 0.0. maybe correct?
 }
 
 // initialise the sensor
@@ -164,12 +165,6 @@ void AP_Airspeed_AUAV::setup()
     set_bus_id(dev->get_bus_id());
     // read coefficients from sensor
     read_coefficients();
-
-
-
-
-
-
 
     // Send Start command to start measurement
     uint8_t command[] = {START_AVERAGE16_CMD};
@@ -206,27 +201,70 @@ void AP_Airspeed_AUAV::timer()
     Debug("AUAV: Started timer code");
     uint8_t raw_bytes[7];
     uint8_t status;
-    uint32_t pressure_raw;
-    uint32_t temperature_raw;
+    // local variables:
+    float AP3, BP2, CP, Corr, Pcorr, Pdiff, TC50, Pnfso, Tcorr, Pcorrt, Pnorm;
+    int32_t iPraw, Tdiff, iTemp;
+    uint32_t PComp, iPcorr;
     if (!dev->read((uint8_t *)&raw_bytes, sizeof(raw_bytes))) {
         Debug("AUAV: no data received");
         return;
     }
-    else {
-        // Extract status, pressure, and temperature
-        status          = raw_bytes[0];
-        pressure_raw    = (raw_bytes[1] << 16) | (raw_bytes[2] << 8) | raw_bytes[3];
-        temperature_raw = (raw_bytes[4] << 16) | (raw_bytes[5] << 8) | raw_bytes[6];
-        // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: elseloop: pressure_raw: %lu; temperature_raw: %lu", pressure_raw, temperature_raw);
-    }
-
+    // Extract status
+    status          = raw_bytes[0];
     // Check status byte
     if ((status & 0xAF) != 0) {
         Debug("AUAV: Bad status read %u", status);
         return;
     }
 
-    float press_h2o = 1.25f * (pressure_raw - 8388608.0f) / 16777216.0f * (2.0f * range_inH2O);
+    // Extract raw pressure and temperature values    
+    // Convert unsigned 24-bit pressure value to signed +/- 23-bit:
+    iPraw    = ((raw_bytes[1] << 16) | (raw_bytes[2] << 8) | raw_bytes[3]) - 0x800000;
+    // 24-bit temperature
+    iTemp = (raw_bytes[4] << 16) | (raw_bytes[5] << 8) | raw_bytes[6];
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: elseloop: pressure_raw: %lu; temperature_raw: %lu", pressure_raw, temperature_raw);
+    
+    Pnorm = (float)iPraw;                   // cast to float
+    Pnorm /= (float) 0x7FFFFF;              // divide by 2^23-1
+
+    AP3 = DLIN_A * Pnorm * Pnorm * Pnorm;   // A*Pout^3
+    BP2 = DLIN_B * Pnorm * Pnorm;           // B*Pout^2
+    CP = DLIN_C * Pnorm;                    // C*POut
+    Corr = AP3 + BP2 + CP + DLIN_D;         // Linearity correction term
+    Pcorr = Pnorm + Corr;                   // Corrected P, range +/-1.0.
+
+    iPcorr = (int32_t)(Pcorr * (float)0x7FFFFF); // Convert to signed 23-bit
+    iPcorr += 0x800000; // Back to unsigned 24-bit
+
+    // Compute difference from reference temperature, in sensor counts:
+    Tdiff = iTemp - Tref_Counts; // see constant defined above.
+    Pnfso = (Pcorr + 1.0)/2.0;
+    //TC50: Select High/Low, based on current temp above/below 25C:
+    if (Tdiff > 0) 
+    {
+        TC50 = D_TC50H;
+    }
+    else
+    {
+        TC50 = D_TC50L;
+    }
+    // Find absolute difference between midrange and reading (abs(Pnfso-0.5)):
+    if (Pnfso > 0.5)
+    {
+        Pdiff = Pnfso - 0.5;
+    }
+    else
+    {
+        Pdiff = 0.5 - Pnfso;
+    }
+
+    Tcorr = (1.0 - (D_Es * 2.5 * Pdiff)) * Tdiff * TC50 / TC50Scale;
+    Pcorrt = Pnfso - Tcorr; // corrected P: float, [0 to +1.0)
+    PComp = (uint32_t) (Pcorrt * (float)0xFFFFFF);
+        
+
+
+    float press_h2o = 1.25f * (PComp - 8388608.0f) / 16777216.0f * (2.0f * range_inH2O);
 
 
     if ((press_h2o > range_inH2O) || (press_h2o < -range_inH2O)) {
@@ -234,7 +272,7 @@ void AP_Airspeed_AUAV::timer()
         return;
     }
 
-    float temp = temperature_raw * (155.0f / 16777216.0f) - 45.0f;
+    float temp = Tcorr * (155.0f / 16777216.0f) - 45.0f;
 
     WITH_SEMAPHORE(sem);
 

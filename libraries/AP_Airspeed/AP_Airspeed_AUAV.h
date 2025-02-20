@@ -38,8 +38,10 @@
 #define START_AVERAGE8_CMD 0xAE
 #define START_AVERAGE16_CMD 0xAF
 
-#define Tref_Counts  7576807 // temperature counts at 25C
-#define TC50Scale 1677722000 // scale TC50 to 1.0% FS0
+// temperature counts at 25C
+#define Tref_Counts  7576807
+// scale TC50 to 1.0% FS0 
+#define TC50Scale 1677722000 
 
 
 class AP_Airspeed_AUAV : public AP_Airspeed_Backend
