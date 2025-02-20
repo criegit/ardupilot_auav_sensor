@@ -68,19 +68,47 @@ void AP_Airspeed_AUAV::setup()
     dev->set_device_type(uint8_t(DevType::AUAV));
     set_bus_id(dev->get_bus_id());
     // Send Start command to start measurement
-    uint8_t command[] = {START_AVERAGE2_CMD};
+    uint8_t command[] = {START_AVERAGE16_CMD};
     
     uint8_t ret_i2c = dev->transfer(command, 1, nullptr, 0);
 
     if (!ret_i2c) { 
-        Debug("AUAV: Failed to send Start-Average2 command");
+        Debug("AUAV: Failed to send Start command");
         return;
     }
 
+    // get Extended Compensation values from AUAV sensor according to datasheet pages 13-16. Registers on page 10
+    int32_t i32A = 0, i32B =0, i32C =0, i32D=0,  i32TC50HLE=0;
+    int8_t i8TC50H = 0, i8TC50L = 0, i8Es = 0;
+
+    //Get real coefficients from sensor
+    uint8_t raw_bytes_H[2];
+    uint8_t raw_bytes_L[2];
+    ret_i2c = dev->read_registers(0x2F, (uint8_t *)&raw_bytes_H, sizeof(raw_bytes_H));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to send Start command");
+        return;
+    }
+    uint8_t ret_i2c = dev->read_registers(0x30, (uint8_t *)&raw_bytes_L, sizeof(raw_bytes_L));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to send Start command");
+        return;
+    }
+    i32A = (raw_bytes_H[1] << 32) | (raw_bytes_H[2] << 24) | (raw_bytes_H[2] << 16) | (raw_bytes_L[2] << 16) | (raw_bytes_L[2] << 8) | raw_bytes_L[3];
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficient A: %i", i32A);
+
+
+    // initialize DLIN_*, D_Es, D_TC50H and D_TC50L
+
+
+
+
+
+
     // Register periodic callback for differential pressure sensor
     Debug("AUAV: Start periodic callback");
-    dev->register_periodic_callback(1000000UL/50U,
-                                    FUNCTOR_BIND_MEMBER(&AP_Airspeed_AUAV::timer, void));
+    dev->register_periodic_callback(100000000UL/50U,
+                                    FUNCTOR_BIND_MEMBER(&AP_Airspeed_AUAV::timer, void)); //todo: remove the 100000000UL/50U and replace with 1000000UL/50U
 }
 
 // probe and initialise the sensor
@@ -97,7 +125,7 @@ bool AP_Airspeed_AUAV::init()
     return true;
 }
 
-// 50Hz?? timer
+// 50Hz timer
 void AP_Airspeed_AUAV::timer()
 {
     // Sensor has to be set to specific mode (averaging) suggestion: average16 for less noise and less computing power
@@ -160,7 +188,7 @@ void AP_Airspeed_AUAV::timer()
     uint8_t command[] = {START_AVERAGE16_CMD};
     uint8_t ret_i2c = dev->transfer(command, 1, nullptr, 0);
     if (!ret_i2c) { 
-        Debug("AUAV: Failed to send Start-Average2 command");
+        Debug("AUAV: Failed to send Start command");
         return;
     }
 
