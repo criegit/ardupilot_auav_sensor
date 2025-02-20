@@ -106,7 +106,7 @@ void AP_Airspeed_AUAV::timer()
     uint8_t status;
     uint32_t pressure_raw;
     uint32_t temperature_raw;
-    if (!dev->read((uint8_t *)&raw_bytes, sizeof(raw_bytes))) { //todo: stop function if no data is received 
+    if (!dev->read((uint8_t *)&raw_bytes, sizeof(raw_bytes))) {
         Debug("AUAV: no data received");
         return;
     }
@@ -121,7 +121,7 @@ void AP_Airspeed_AUAV::timer()
                                     raw_bytes[6];
         // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: elseloop: pressure_raw: %lu; temperature_raw: %lu", pressure_raw, temperature_raw);
     }
-    
+
     // Check status byte
     if ((status & 0xAF) != 0) {
         Debug("AUAV: Bad status read %u", status);
@@ -164,7 +164,7 @@ void AP_Airspeed_AUAV::timer()
         return;
     }
 
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: completed! pressure: %f; temperature: %f", press_h2o, temp);
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: pres: %f; temp: %f", press_h2o, temp);
    
 }
 
