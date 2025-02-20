@@ -61,23 +61,25 @@ AP_Airspeed_Backend *AP_Airspeed_AUAV::probe(AP_Airspeed &_frontend,
 void AP_Airspeed_AUAV::setup()
 {
     Debug("AUAV: Started setup code");
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Started setup code");
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Started setup code");
     WITH_SEMAPHORE(dev->get_semaphore());
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup got semaphore");
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup got semaphore");
     dev->set_speed(AP_HAL::Device::SPEED_LOW);
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup speed low");
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup speed low");
     dev->set_retries(2);
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup retries 2");
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup retries 2");
     dev->set_device_type(uint8_t(DevType::AUAV));
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup devtype auav");
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup devtype auav");
     set_bus_id(dev->get_bus_id());
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup got bus id 0x%02x", (unsigned)dev->get_bus_id());
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup got bus id 0x%02x", (unsigned)dev->get_bus_id());
     // Send Start-Average16 command to start measurement
     uint8_t command[] = {START_AVERAGE2_CMD};
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup created start command %u, size: %d", command[0], (int)sizeof(command));
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup created start command %u, size: %d", command[0], (int)sizeof(command));
     //GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: pretesting command %f", float(dev->transfer(command, 1, nullptr, 0));
+  
     uint8_t ret_i2c = dev->transfer(command, 1, nullptr, 0);
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup return by send i2c command %d", ret_i2c);
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup return by send i2c command %d", ret_i2c);
+    // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup received response %d", response[0]);
 
 
 
@@ -103,7 +105,7 @@ void AP_Airspeed_AUAV::setup()
     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup sent start command");
     // Register periodic callback for differential pressure sensor
     Debug("AUAV: Start periodic callback");
-    dev->register_periodic_callback(1000000UL/50U,
+    dev->register_periodic_callback(100000000UL/50U,
                                     FUNCTOR_BIND_MEMBER(&AP_Airspeed_AUAV::timer, void));
     Debug("AUAV: Started periodic callback, finished setup");
 }
@@ -133,9 +135,10 @@ void AP_Airspeed_AUAV::timer()
     uint8_t status;
     uint32_t pressure_raw;
     uint32_t temperature_raw;
-    if (!dev->read((uint8_t *)&raw_bytes, sizeof(raw_bytes))) {
+    if (!dev->read((uint8_t *)&raw_bytes, sizeof(raw_bytes))) { //todo: stop function if no data is received 
+        Debug("AUAV: no data received");
         // return;
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: timer raw_bytes[0]: %x", raw_bytes[0]);
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: no data received");
         status = 0x03;
         pressure_raw = (0xAA << 16) |
                                 (0xAA << 8) |
@@ -146,6 +149,7 @@ void AP_Airspeed_AUAV::timer()
     }
     else {
         // Extract status, pressure, and temperature
+        // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: elseloop: raw_bytes[0]: %x", raw_bytes[0]);
         status = raw_bytes[0];
         pressure_raw = (raw_bytes[1] << 16) |
                                 (raw_bytes[2] << 8) |
@@ -153,12 +157,16 @@ void AP_Airspeed_AUAV::timer()
         temperature_raw = (raw_bytes[4] << 16) |
                                     (raw_bytes[5] << 8) |
                                     raw_bytes[6];
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: elseloop: pressure_raw: %lu; temperature_raw: %lu", pressure_raw, temperature_raw);
     }
 
-    
+    for (int i = 0; i < 7; i++) {
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: raw_byte[%d]: %x", i, raw_bytes[i]);
+    }
+
 
     // Check status byte
-    if ((status & 0x03) != 0) {
+    if ((status & 0xAF) != 0) {
         Debug("AUAV: Bad status read %u", status);
         return;
     }
@@ -190,6 +198,14 @@ void AP_Airspeed_AUAV::timer()
     press_count++;
     temp_count++;
     last_sample_time_ms = now;
+
+    // initialize next measurement:
+    uint8_t command[] = {START_AVERAGE16_CMD};
+    uint8_t ret_i2c = dev->transfer(command, 1, nullptr, 0);
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to send Start-Average2 command");
+        return;
+    }
 }
 
 // return the current differential_pressure in Pascal

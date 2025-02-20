@@ -29,7 +29,7 @@
 #include "AP_Airspeed_Backend.h"
 
 // I2C Adress of differntial pressure sensor
-#define AUAVDIFF_I2C_ADDR 0x28
+#define AUAVDIFF_I2C_ADDR 0x26
 
 // Commands to start measuring modes
 #define START_Single_CMD 0xAA
