@@ -57,6 +57,95 @@ AP_Airspeed_Backend *AP_Airspeed_AUAV::probe(AP_Airspeed &_frontend,
     return sensor;
 }
 
+void AP_Airspeed_AUAV::read_coefficients()
+{
+    // get Extended Compensation values from AUAV sensor according to datasheet pages 13-16. Registers on page 10
+    int32_t i32A = 0, i32B =0, i32C =0, i32D=0, i32TC50HLE=0;
+
+    //Get real coefficients from sensor A
+    uint8_t raw_bytes_H[2];
+    uint8_t raw_bytes_L[2];
+    uint8_t ret_i2c = dev->read_registers(0x2F, (uint8_t *)&raw_bytes_H, sizeof(raw_bytes_H));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to read coefficient register");
+        return;
+    }
+    ret_i2c = dev->read_registers(0x30, (uint8_t *)&raw_bytes_L, sizeof(raw_bytes_L));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to read coefficient register");
+        return;
+    }
+    i32A = (raw_bytes_H[0] << 24) | (raw_bytes_H[1] << 16) | (raw_bytes_L[0] << 8) | raw_bytes_L[1];
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficient i32A: %ld", (long)i32A);
+
+    //Get real coefficients from sensor B
+    ret_i2c = dev->read_registers(0x31, (uint8_t *)&raw_bytes_H, sizeof(raw_bytes_H));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to read coefficient register");
+        return;
+    }
+    ret_i2c = dev->read_registers(0x32, (uint8_t *)&raw_bytes_L, sizeof(raw_bytes_L));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to read coefficient register");
+        return;
+    }
+    i32B = (raw_bytes_H[0] << 24) | (raw_bytes_H[1] << 16) | (raw_bytes_L[0] << 8) | raw_bytes_L[1];
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficient i32B: %ld", (long)i32B);
+
+    //Get real coefficients from sensor C
+    ret_i2c = dev->read_registers(0x33, (uint8_t *)&raw_bytes_H, sizeof(raw_bytes_H));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to read coefficient register");
+        return;
+    }
+    ret_i2c = dev->read_registers(0x34, (uint8_t *)&raw_bytes_L, sizeof(raw_bytes_L));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to read coefficient register");
+        return;
+    }
+    i32C = (raw_bytes_H[0] << 24) | (raw_bytes_H[1] << 16) | (raw_bytes_L[0] << 8) | raw_bytes_L[1];
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficient i32C: %ld", (long)i32C);
+
+    //Get real coefficients from sensor D
+    ret_i2c = dev->read_registers(0x35, (uint8_t *)&raw_bytes_H, sizeof(raw_bytes_H));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to read coefficient register");
+        return;
+    }
+    ret_i2c = dev->read_registers(0x36, (uint8_t *)&raw_bytes_L, sizeof(raw_bytes_L));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to read coefficient register");
+        return;
+    }
+    i32D = (raw_bytes_H[0] << 24) | (raw_bytes_H[1] << 16) | (raw_bytes_L[0] << 8) | raw_bytes_L[1];
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficient i32D: %ld", (long)i32D);
+
+    //Get real coefficients from sensor TC50H TC50L Es
+    ret_i2c = dev->read_registers(0x37, (uint8_t *)&raw_bytes_H, sizeof(raw_bytes_H));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to read coefficient register");
+        return;
+    }
+    ret_i2c = dev->read_registers(0x38, (uint8_t *)&raw_bytes_L, sizeof(raw_bytes_L));
+    if (!ret_i2c) { 
+        Debug("AUAV: Failed to read coefficient register");
+        return;
+    }
+    i32TC50HLE = (raw_bytes_H[0] << 24) | (raw_bytes_H[1] << 16) | (raw_bytes_L[0] << 8) | raw_bytes_L[1];
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficient i32TC50HLE: %ld", (long)i32TC50HLE);
+
+    // scale values
+    DLIN_A  = ((float)(i32A))/((float)(0x7FFFFFFF));
+    DLIN_B  = ((float)(i32B))/((float)(0x7FFFFFFF));
+    DLIN_C  = ((float)(i32C))/((float)(0x7FFFFFFF));
+    DLIN_D  = ((float)(i32D))/((float)(0x7FFFFFFF)); 
+    D_TC50H = (i32TC50HLE >> 24) & 0xFF;
+    D_TC50L = (i32TC50HLE >> 16) & 0xFF;
+    D_Es    = (i32TC50HLE ) & 0xFF; 
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficients i32A: %f, i32B: %f, i32C: %f, i32D: %f, i32TC50HLE: %f, D_TC50H: %f, D_TC50L: %f, D_Es: %f", 
+                  DLIN_A, DLIN_B, DLIN_C, DLIN_D, (float)i32TC50HLE, (float)D_TC50H, (float)D_TC50L, (float)D_Es);
+}
+
 // initialise the sensor
 void AP_Airspeed_AUAV::setup()
 {
@@ -67,43 +156,21 @@ void AP_Airspeed_AUAV::setup()
     dev->set_retries(2);
     dev->set_device_type(uint8_t(DevType::AUAV));
     set_bus_id(dev->get_bus_id());
+    // read coefficients from sensor
+    read_coefficients();
+    
+
+
+
+
+
     // Send Start command to start measurement
     uint8_t command[] = {START_AVERAGE16_CMD};
-    
     uint8_t ret_i2c = dev->transfer(command, 1, nullptr, 0);
-
     if (!ret_i2c) { 
         Debug("AUAV: Failed to send Start command");
         return;
     }
-
-    // get Extended Compensation values from AUAV sensor according to datasheet pages 13-16. Registers on page 10
-    int32_t i32A = 0, i32B =0, i32C =0, i32D=0,  i32TC50HLE=0;
-    int8_t i8TC50H = 0, i8TC50L = 0, i8Es = 0;
-
-    //Get real coefficients from sensor
-    uint8_t raw_bytes_H[2];
-    uint8_t raw_bytes_L[2];
-    ret_i2c = dev->read_registers(0x2F, (uint8_t *)&raw_bytes_H, sizeof(raw_bytes_H));
-    if (!ret_i2c) { 
-        Debug("AUAV: Failed to send Start command");
-        return;
-    }
-    uint8_t ret_i2c = dev->read_registers(0x30, (uint8_t *)&raw_bytes_L, sizeof(raw_bytes_L));
-    if (!ret_i2c) { 
-        Debug("AUAV: Failed to send Start command");
-        return;
-    }
-    i32A = (raw_bytes_H[1] << 32) | (raw_bytes_H[2] << 24) | (raw_bytes_H[2] << 16) | (raw_bytes_L[2] << 16) | (raw_bytes_L[2] << 8) | raw_bytes_L[3];
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficient A: %i", i32A);
-
-
-    // initialize DLIN_*, D_Es, D_TC50H and D_TC50L
-
-
-
-
-
 
     // Register periodic callback for differential pressure sensor
     Debug("AUAV: Start periodic callback");

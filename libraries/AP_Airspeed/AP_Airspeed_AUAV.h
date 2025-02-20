@@ -54,6 +54,8 @@ public:
     // probe and initialise the sensor
     bool init() override;
 
+    void read_coefficients();
+
     // return the current differential_pressure in Pascal
     bool get_differential_pressure(float &pressure) override;
 
