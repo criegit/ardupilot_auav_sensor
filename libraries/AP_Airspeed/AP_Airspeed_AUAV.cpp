@@ -61,6 +61,7 @@ void AP_Airspeed_AUAV::read_coefficients()
 {
     // get Extended Compensation values from AUAV sensor according to datasheet pages 13-16. Registers on page 10
     int32_t i32A = 0, i32B =0, i32C =0, i32D=0, i32TC50HLE=0;
+    int8_t i8TC50H=0, i8TC50L=0, i8Es=0;
 
     //Get real coefficients from sensor A
     uint8_t raw_bytes_H[2];
@@ -132,18 +133,23 @@ void AP_Airspeed_AUAV::read_coefficients()
         return;
     }
     i32TC50HLE = (raw_bytes_H[0] << 24) | (raw_bytes_H[1] << 16) | (raw_bytes_L[0] << 8) | raw_bytes_L[1];
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficient i32TC50HLE: %ld", (long)i32TC50HLE);
+    i8TC50H = (i32TC50HLE >> 24) & 0xFF;
+    i8TC50L = (i32TC50HLE >> 16) & 0xFF;
+    i8Es    = (i32TC50HLE ) & 0xFF;
 
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficient i32TC50HLE: %ld, i8TC50H: %d, i8TC50L: %d, i8Es: %d", (long)i32TC50HLE, (int)i8TC50H, (int)i8TC50L, (int)i8Es);
     // scale values
     DLIN_A  = ((float)(i32A))/((float)(0x7FFFFFFF));
     DLIN_B  = ((float)(i32B))/((float)(0x7FFFFFFF));
     DLIN_C  = ((float)(i32C))/((float)(0x7FFFFFFF));
     DLIN_D  = ((float)(i32D))/((float)(0x7FFFFFFF)); 
-    D_TC50H = (i32TC50HLE >> 24) & 0xFF;
-    D_TC50L = (i32TC50HLE >> 16) & 0xFF;
-    D_Es    = (i32TC50HLE ) & 0xFF; 
-    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficients i32A: %f, i32B: %f, i32C: %f, i32D: %f, i32TC50HLE: %f, D_TC50H: %f, D_TC50L: %f, D_Es: %f", 
-                  DLIN_A, DLIN_B, DLIN_C, DLIN_D, (float)i32TC50HLE, (float)D_TC50H, (float)D_TC50L, (float)D_Es);
+    D_TC50H = (float)(i8TC50H)/(float)(0x7F);
+    D_TC50L = (float)(i8TC50L)/(float)(0x7F);
+    D_Es    = (float)(i8Es)/(float)(0x7F);
+
+
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: Coefficients i32A: %f, i32B: %f, i32C: %f, i32D: %f, D_TC50H: %f, D_TC50L: %f, D_Es: %f", 
+                  DLIN_A, DLIN_B, DLIN_C, DLIN_D, (float)D_TC50H, (float)D_TC50L, (float)D_Es);
 }
 
 // initialise the sensor
@@ -158,7 +164,8 @@ void AP_Airspeed_AUAV::setup()
     set_bus_id(dev->get_bus_id());
     // read coefficients from sensor
     read_coefficients();
-    
+
+
 
 
 
@@ -207,13 +214,9 @@ void AP_Airspeed_AUAV::timer()
     }
     else {
         // Extract status, pressure, and temperature
-        status = raw_bytes[0];
-        pressure_raw = (raw_bytes[1] << 16) |
-                                (raw_bytes[2] << 8) |
-                                raw_bytes[3];
-        temperature_raw = (raw_bytes[4] << 16) |
-                                    (raw_bytes[5] << 8) |
-                                    raw_bytes[6];
+        status          = raw_bytes[0];
+        pressure_raw    = (raw_bytes[1] << 16) | (raw_bytes[2] << 8) | raw_bytes[3];
+        temperature_raw = (raw_bytes[4] << 16) | (raw_bytes[5] << 8) | raw_bytes[6];
         // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: elseloop: pressure_raw: %lu; temperature_raw: %lu", pressure_raw, temperature_raw);
     }
 
