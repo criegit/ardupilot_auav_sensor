@@ -105,7 +105,7 @@ void AP_Airspeed_AUAV::setup()
     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: setup sent start command");
     // Register periodic callback for differential pressure sensor
     Debug("AUAV: Start periodic callback");
-    dev->register_periodic_callback(100000000UL/50U,
+    dev->register_periodic_callback(1000000UL/50U,
                                     FUNCTOR_BIND_MEMBER(&AP_Airspeed_AUAV::timer, void));
     Debug("AUAV: Started periodic callback, finished setup");
 }
@@ -157,13 +157,12 @@ void AP_Airspeed_AUAV::timer()
         temperature_raw = (raw_bytes[4] << 16) |
                                     (raw_bytes[5] << 8) |
                                     raw_bytes[6];
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: elseloop: pressure_raw: %lu; temperature_raw: %lu", pressure_raw, temperature_raw);
+        // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: elseloop: pressure_raw: %lu; temperature_raw: %lu", pressure_raw, temperature_raw);
     }
 
     for (int i = 0; i < 7; i++) {
         GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: raw_byte[%d]: %x", i, raw_bytes[i]);
     }
-
 
     // Check status byte
     if ((status & 0xAF) != 0) {
@@ -206,6 +205,9 @@ void AP_Airspeed_AUAV::timer()
         Debug("AUAV: Failed to send Start-Average2 command");
         return;
     }
+
+    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "AUAV: completed! pressure: %f; temperature: %f", press_h2o, temp);
+   
 }
 
 // return the current differential_pressure in Pascal
